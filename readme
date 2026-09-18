@@ -1,1 +1,7 @@
-helooo
+├── data/              # Sample/raw dataset files or schema
+├── src/               # Core Python scripts
+│   ├── preprocess.py  # Data cleaning and feature engineering
+│   ├── model.py       # Model architecture definition
+│   └── train.py       # Training and evaluation loop
+├── requirements.txt   # Dependencies (e.g., torch, pandas, scikit-learn)
+└── README.md          # Project overview and instructions
