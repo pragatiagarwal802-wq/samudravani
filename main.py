@@ -14,7 +14,10 @@ from fastapi import FastAPI, HTTPException
 from graph.workflow import build_workflow
 from models.schemas import VoyagePlanResponse, VoyageRequest
 from services.data_service import build_default_service
+from services.localization_service import LocalizationService
 from services.routing_service import load_geojson_land_mask
+
+_localizer = LocalizationService()
 
 
 @asynccontextmanager
@@ -37,7 +40,15 @@ def plan_voyage(req: VoyageRequest) -> VoyagePlanResponse:
     if req.window.end <= req.window.start:
         raise HTTPException(status_code=422, detail="window.end must be after window.start")
     final = app.state.graph.invoke({"request": req, "warnings": [], "trace": []})
-    return VoyagePlanResponse(plan=final["plan"], warnings=final.get("warnings", []), trace=final.get("trace", []))
+    plan = final["plan"]
+    fishing = final.get("fishing")
+    return VoyagePlanResponse(
+        plan=plan,
+        fishing_zones=fishing.zones if fishing else [],
+        localized=_localizer.localize_all(plan),  # all languages at once so the UI can toggle without re-planning
+        warnings=final.get("warnings", []),
+        trace=final.get("trace", []),
+    )
 
 
 @app.get("/health")

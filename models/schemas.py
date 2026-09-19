@@ -208,7 +208,34 @@ class VoyagePlan(BaseModel):
     data_status: Dict[str, str] = Field(default_factory=dict)
 
 
+class LocalizedRule(BaseModel):
+    rule_id: str
+    variable: str
+    verdict: str  # safety tag, never translated
+    message: str
+
+
+class LocalizedPlan(BaseModel):
+    """Presentation-only rendering of a VoyagePlan; numbers, coordinates and tags are unchanged."""
+
+    lang: str
+    status_tag: str
+    status_text: str
+    summary: str
+    refusal_reason: Optional[str] = None
+    risk_tag: Optional[str] = None
+    risk_text: Optional[str] = None
+    risk_explanation: Optional[str] = None
+    triggered: List[LocalizedRule] = Field(default_factory=list)
+    explanation: List[str] = Field(default_factory=list)
+    caveats: List[str] = Field(default_factory=list)
+    conflicts_resolved: List[str] = Field(default_factory=list)
+    untranslated: List[str] = Field(default_factory=list)  # strings shown in English
+
+
 class VoyagePlanResponse(BaseModel):
     plan: VoyagePlan
+    fishing_zones: List[FishingZone] = Field(default_factory=list)  # informational; see plan.status
+    localized: Dict[str, LocalizedPlan] = Field(default_factory=dict)
     warnings: List[str] = Field(default_factory=list)
     trace: List[str] = Field(default_factory=list)

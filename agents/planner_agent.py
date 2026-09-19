@@ -85,7 +85,10 @@ def planner_agent(state: VoyageState) -> dict:
     viable.sort(key=lambda c: (-(c.zone.score if c.zone else 0.0), c.route.fuel_l))
     best = viable[0]
     if cands[0] is not best:
-        conflicts.append(f"Top-ranked {_label(cands[0])} was not usable; chose {_label(best)} instead.")
+        if cands[0] in viable:  # only possible when scores tie
+            conflicts.append(f"Chose {_label(best)} over equally scored {_label(cands[0])}: lower fuel.")
+        else:
+            conflicts.append(f"Top-ranked {_label(cands[0])} was not usable; chose {_label(best)} instead.")
 
     r = best.route
     status = PlanStatus.PROCEED if risk.verdict is VoyageRisk.SAFE else PlanStatus.PROCEED_WITH_CAUTION
