@@ -23,6 +23,68 @@ class RiskLevel(str, Enum):
     INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
 
 
+class VoyageRisk(str, Enum):
+    SAFE = "SAFE"
+    CAUTION = "CAUTION"
+    HIGH_RISK = "HIGH_RISK"
+    DO_NOT_VENTURE = "DO_NOT_VENTURE"
+    INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
+
+
+class TriggeredRule(BaseModel):
+    rule_id: str
+    variable: str
+    value: float
+    op: str
+    threshold: float
+    verdict: VoyageRisk
+    message: str
+
+
+class VoyageRiskAssessment(BaseModel):
+    verdict: VoyageRisk
+    triggered: List[TriggeredRule] = Field(default_factory=list)
+    evaluated_variables: List[str] = Field(default_factory=list)
+    missing_variables: List[str] = Field(default_factory=list)
+    explanation: str
+
+
+class Waypoint(BaseModel):
+    lat: float
+    lon: float
+
+
+class RouteResult(BaseModel):
+    found: bool
+    reason: Optional[str] = None
+    waypoints: List[Waypoint] = Field(default_factory=list)
+    distance_nm: float = 0.0
+    straight_line_nm: float = 0.0
+    duration_h: float = 0.0
+    fuel_l: float = 0.0
+    max_wave_m: Optional[float] = None
+    max_headwind_ms: Optional[float] = None
+    land_mask_used: bool = False
+    conditions_used: bool = False
+    cells_without_data: int = 0
+
+
+class FishingZone(BaseModel):
+    lat: float
+    lon: float
+    score: float = Field(ge=0.0, le=1.0)
+    components: Dict[str, float]
+    reasons: List[str]
+    # Grid indices of the source cell, so the coordinate can be traced to data.
+    source_cell: List[int]
+
+
+class FishingResult(BaseModel):
+    zones: List[FishingZone] = Field(default_factory=list)
+    candidate_cells: int = 0
+    notes: List[str] = Field(default_factory=list)
+
+
 class Location(BaseModel):
     lat: float = Field(ge=-90, le=90)
     lon: float = Field(ge=-180, le=180)

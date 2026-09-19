@@ -54,6 +54,54 @@ providers:
     # ERA6 is not released; the provider reports NOT_AVAILABLE and never fabricates data.
     status_expected: NOT_AVAILABLE
 
+# Deterministic voyage rules. Verdict = worst triggered rule.
+# Verdicts: CAUTION < HIGH_RISK < DO_NOT_VENTURE (none triggered -> SAFE).
+# Thresholds are starting points (roughly Beaufort 6/8/10 and common small-vessel
+# sea-state limits); tune them per vessel class and local regulation.
+voyage_rules:
+  - {id: wave_caution,   variable: wave_height, op: ">=", threshold: 2.5,  verdict: CAUTION,         message: "Significant wave height {value:.1f} m >= {threshold} m (moderate sea)."}
+  - {id: wave_high,      variable: wave_height, op: ">=", threshold: 4.0,  verdict: HIGH_RISK,       message: "Significant wave height {value:.1f} m >= {threshold} m (rough sea)."}
+  - {id: wave_stop,      variable: wave_height, op: ">=", threshold: 6.0,  verdict: DO_NOT_VENTURE,  message: "Significant wave height {value:.1f} m >= {threshold} m (very rough or worse)."}
+  - {id: wind_caution,   variable: wind_speed, op: ">=", threshold: 10.8, verdict: CAUTION,         message: "Wind {value:.1f} m/s >= {threshold} m/s (Beaufort 6, strong breeze)."}
+  - {id: wind_high,      variable: wind_speed, op: ">=", threshold: 17.2, verdict: HIGH_RISK,       message: "Wind {value:.1f} m/s >= {threshold} m/s (Beaufort 8, gale)."}
+  - {id: wind_stop,      variable: wind_speed, op: ">=", threshold: 24.5, verdict: DO_NOT_VENTURE,  message: "Wind {value:.1f} m/s >= {threshold} m/s (Beaufort 10, storm)."}
+  - {id: vis_caution,    variable: visibility, op: "<=", threshold: 5.0,  verdict: CAUTION,         message: "Visibility {value:.1f} km <= {threshold} km."}
+  - {id: vis_high,       variable: visibility, op: "<=", threshold: 2.0,  verdict: HIGH_RISK,       message: "Visibility {value:.1f} km <= {threshold} km (poor)."}
+  - {id: vis_stop,       variable: visibility, op: "<=", threshold: 0.5,  verdict: DO_NOT_VENTURE,  message: "Visibility {value:.1f} km <= {threshold} km (fog)."}
+  - {id: current_caution, variable: current_speed, op: ">=", threshold: 1.5, verdict: CAUTION,      message: "Current {value:.1f} m/s >= {threshold} m/s."}
+  - {id: current_high,   variable: current_speed, op: ">=", threshold: 2.5, verdict: HIGH_RISK,     message: "Current {value:.1f} m/s >= {threshold} m/s (strong)."}
+
+# Vessel and router parameters (illustrative small fishing vessel).
+vessel:
+  cruise_speed_kn: 8.0
+  design_speed_kn: 10.0
+  fuel_rate_lph_at_design: 45.0     # litres/hour at design speed; scaled by (v/v_design)^3
+  fuel_penalty_share: 0.5           # share of routing weather penalty that becomes extra fuel
+
+routing:
+  grid_resolution_deg: 0.1
+  margin_deg: 1.0
+  max_nodes: 250000
+  max_wave_m: 6.0                   # cells at or above this are impassable
+  wave_weight: 3.0                  # cost x (1 + wave_weight * (Hs / max_wave)^2)
+  headwind_weight: 1.0              # cost x (1 + headwind_weight * headwind / headwind_ref)
+  headwind_ref_ms: 15.0
+
+# Fishing suitability from fronts. Gradients: SST degC/km, Chl-a log10(mg/m3)/km.
+fishing:
+  sst_front_threshold: 0.03         # min gradient for a cell to count as a front feature point
+  sst_front_saturation: 0.15        # gradient giving a full front score
+  chl_front_threshold: 0.01
+  chl_front_saturation: 0.05
+  sst_optimal_c: [24.0, 30.0]       # preferred SST band (species-dependent; tune)
+  sst_margin_c: 4.0
+  chl_optimal_mgm3: [0.2, 2.0]
+  chl_margin_factor: 4.0            # score decays to 0 within this multiplicative distance
+  weights: {sst_front: 0.35, chl_front: 0.30, sst_preference: 0.20, chl_preference: 0.15}
+  min_score: 0.4
+  top_n: 10
+  min_separation_km: 20.0
+
 # Behaviour when data is missing.
 missing_data:
   min_variables_required: 2      # below this, result is INSUFFICIENT_DATA
