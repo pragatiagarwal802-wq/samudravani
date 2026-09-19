@@ -6,6 +6,8 @@ from typing import Optional
 
 import numpy as np
 
+from models.schemas import GridPayload
+
 KM_PER_DEG = 111.0
 
 
@@ -30,6 +32,15 @@ class GriddedField:
             d = np.diff(ax)
             if ax.size < 2 or not (np.all(d > 0) or np.all(d < 0)):
                 raise ValueError("lat/lon must be strictly monotonic with at least 2 points")
+
+    def to_payload(self) -> GridPayload:
+        rows = [[None if not np.isfinite(v) else float(v) for v in row] for row in self.values]
+        return GridPayload(name=self.name, unit=self.unit, lat=self.lat.tolist(), lon=self.lon.tolist(), values=rows)
+
+    @classmethod
+    def from_payload(cls, p: GridPayload) -> "GriddedField":
+        vals = np.array([[np.nan if v is None else v for v in row] for row in p.values], dtype="float64")
+        return cls(np.array(p.lat), np.array(p.lon), vals, p.name, p.unit)
 
     @staticmethod
     def _nearest_idx(axis: np.ndarray, x: float) -> Optional[int]:

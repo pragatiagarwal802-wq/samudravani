@@ -30,6 +30,10 @@ class AscatProvider(DataProvider):
         self.data_dir = data_dir or os.environ.get("ASCAT_DATA_DIR")
         self.url_template = url_template or os.environ.get("ASCAT_URL_TEMPLATE")
 
+    def health(self) -> dict:
+        ok = bool((self.data_dir and os.path.isdir(self.data_dir)) or self.url_template)
+        return {"configured": ok, "detail": "source configured" if ok else "ASCAT_DATA_DIR / ASCAT_URL_TEMPLATE not set"}
+
     def _files(self, start: datetime, end: datetime) -> List[str]:
         files: List[str] = []
         if self.data_dir and os.path.isdir(self.data_dir):

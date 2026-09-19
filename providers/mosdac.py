@@ -19,9 +19,10 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from models.schemas import Observation, ProviderResult, ProviderStatus, RiskQuery
-from providers._util import in_bbox, pick_var, to_utc_naive
+from models.schemas import GridPayload, Observation, ProviderResult, ProviderStatus, RiskQuery
+from providers._util import in_bbox, pick_var, to_utc_naive, wrap_lon
 from providers.base import DataProvider
+from services.fields import GriddedField
 
 KM_PER_DEG = 111.0
 
@@ -97,6 +98,7 @@ class MosdacProvider(DataProvider):
 
         box = query.region(self.half_width)
         obs: List[Observation] = []
+        grids: Dict[str, GridPayload] = {}
         problems: List[str] = []
         try:
             with requests.Session() as session:
@@ -107,7 +109,10 @@ class MosdacProvider(DataProvider):
                         try:
                             path = self.download(session, pid, folder)
                             with xr.open_dataset(path) as ds:
-                                obs += self._normalize(ds, key, spec, box)
+                                o, grid = self._normalize(ds, key, spec, box)
+                                obs += o
+                                if grid is not None and (key not in grids or _finite(grid) > _finite(grids[key])):
+                                    grids[key] = grid  # keep the best-covered scene
                         except Exception as exc:
                             problems.append(f"{spec['dataset']}/{pid}: {exc}")
         except PermissionError as exc:
@@ -120,9 +125,27 @@ class MosdacProvider(DataProvider):
             return ProviderResult(provider=self.name, status=ProviderStatus.NOT_AVAILABLE,
                                   message=msg or "MOSDAC search returned no usable products.")
         return ProviderResult(provider=self.name, status=ProviderStatus.PARTIAL if problems else ProviderStatus.OK,
-                              observations=obs, message=msg)
+                              observations=obs, grids=grids, message=msg)
 
-    def _normalize(self, ds, key: str, spec: dict, box) -> List[Observation]:
+    def health(self) -> dict:
+        ok = bool(os.environ.get("MOSDAC_USERNAME") and os.environ.get("MOSDAC_PASSWORD"))
+        return {"configured": ok, "detail": "credentials present" if ok else "MOSDAC_USERNAME/MOSDAC_PASSWORD not set"}
+
+    @staticmethod
+    def _grid(field, lat, lon, box, key: str, unit: str) -> Optional[GridPayload]:
+        """Box-clipped field as a GridPayload (regular 1-D lat/lon grids only)."""
+        if lat.ndim != 1 or lon.ndim != 1:
+            return None
+        rows = np.where((lat >= box.south) & (lat <= box.north))[0]
+        cols = np.where((wrap_lon(lon) >= box.west) & (wrap_lon(lon) <= box.east))[0]
+        if rows.size < 2 or cols.size < 2:
+            return None
+        try:
+            return GriddedField(lat[rows], lon[cols], field[np.ix_(rows, cols)], key, unit).to_payload()
+        except ValueError:
+            return None
+
+    def _normalize(self, ds, key: str, spec: dict, box):
         vname = pick_var(ds, spec["names"])
         vlat, vlon = pick_var(ds, ["lat", "latitude", "Latitude"]), pick_var(ds, ["lon", "longitude", "Longitude"])
         if not (vname and vlat and vlon):
@@ -146,7 +169,7 @@ class MosdacProvider(DataProvider):
 
         inside = in_bbox(lat2, lon2, box)
         if not (inside & np.isfinite(field)).any():
-            return []
+            return [], None
         f = np.where(inside, field, np.nan)
 
         # gradient per km on the (assumed regular) grid; chl in log10 space
@@ -162,13 +185,18 @@ class MosdacProvider(DataProvider):
 
         valid = np.isfinite(grad)
         if not valid.any():
-            return []
+            return [], None
         thr = spec["front"]
         src = self.name
-        return [
+        obs = [
             Observation(variable=f"{key}_mean", value=float(np.nanmean(f)), unit=spec["unit"], source=src),
             Observation(variable=f"{key}_front_gradient_max", value=float(np.nanmax(grad)),
                         unit=f"{'log10 ' if key == 'chl' else ''}{spec['unit']}/km", source=src),
             Observation(variable=f"{key}_front_fraction", value=float((grad[valid] > thr).mean()),
                         unit="fraction", source=src),
         ]
+        return obs, self._grid(field, lat, lon, box, key, spec["unit"])
+
+
+def _finite(grid: GridPayload) -> int:
+    return sum(v is not None for row in grid.values for v in row)

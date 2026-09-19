@@ -131,10 +131,21 @@ class Observation(BaseModel):
     source: str
 
 
+class GridPayload(BaseModel):
+    """Serialisable lat/lon grid; values[i][j] at (lat[i], lon[j]), None = no data."""
+
+    name: str
+    unit: str = ""
+    lat: List[float]
+    lon: List[float]
+    values: List[List[Optional[float]]]
+
+
 class ProviderResult(BaseModel):
     provider: str
     status: ProviderStatus
     observations: List[Observation] = Field(default_factory=list)
+    grids: Dict[str, GridPayload] = Field(default_factory=dict)
     message: Optional[str] = None
 
 
@@ -152,3 +163,52 @@ class RiskAssessment(BaseModel):
     variable_scores: List[VariableScore] = Field(default_factory=list)
     provider_statuses: Dict[str, ProviderStatus] = Field(default_factory=dict)
     notes: List[str] = Field(default_factory=list)
+
+
+# --- voyage planning -------------------------------------------------------
+
+
+class VoyageRequest(BaseModel):
+    origin: Location
+    destination: Optional[Location] = None
+    window: TimeWindow
+    bbox: Optional[BoundingBox] = None
+    search_radius_deg: float = Field(default=2.0, gt=0, le=10)
+    max_candidates: int = Field(default=3, ge=1, le=5)
+    fuel_budget_l: Optional[float] = Field(default=None, gt=0)  # round-trip budget
+    allow_unmasked_route: bool = False  # dev only: accept routes not checked against land
+
+
+class CandidateRoute(BaseModel):
+    zone: Optional[FishingZone] = None
+    destination: Location
+    route: RouteResult
+
+
+class PlanStatus(str, Enum):
+    PROCEED = "PROCEED"
+    PROCEED_WITH_CAUTION = "PROCEED_WITH_CAUTION"
+    NOT_RECOMMENDED = "NOT_RECOMMENDED"
+    DO_NOT_VENTURE = "DO_NOT_VENTURE"
+    REFUSED = "REFUSED"
+
+
+class VoyagePlan(BaseModel):
+    status: PlanStatus
+    summary: str
+    refusal_reason: Optional[str] = None
+    risk: Optional[VoyageRiskAssessment] = None
+    target_zone: Optional[FishingZone] = None
+    destination: Optional[Location] = None
+    route: Optional[RouteResult] = None
+    alternates: List[CandidateRoute] = Field(default_factory=list)
+    conflicts_resolved: List[str] = Field(default_factory=list)
+    caveats: List[str] = Field(default_factory=list)
+    explanation: List[str] = Field(default_factory=list)
+    data_status: Dict[str, str] = Field(default_factory=dict)
+
+
+class VoyagePlanResponse(BaseModel):
+    plan: VoyagePlan
+    warnings: List[str] = Field(default_factory=list)
+    trace: List[str] = Field(default_factory=list)

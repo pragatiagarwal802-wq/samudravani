@@ -92,6 +92,26 @@ class PolygonLandMask:
         return False
 
 
+def load_geojson_land_mask(path: str) -> PolygonLandMask:
+    """Land polygons from GeoJSON (Polygon/MultiPolygon; exterior rings only, holes ignored)."""
+    import json
+
+    with open(path, "r", encoding="utf-8") as fh:
+        gj = json.load(fh)
+    feats = gj["features"] if gj.get("type") == "FeatureCollection" else [gj]
+    polys: List[List[LatLon]] = []
+    for f in feats:
+        g = f.get("geometry", f)
+        if g["type"] == "Polygon":
+            rings = [g["coordinates"][0]]
+        elif g["type"] == "MultiPolygon":
+            rings = [p[0] for p in g["coordinates"]]
+        else:
+            continue
+        polys += [[(pt[1], pt[0]) for pt in r] for r in rings]  # GeoJSON is (lon, lat)
+    return PolygonLandMask(polys)
+
+
 class GridLandMask:
     """Land from a GriddedField where values > 0.5 mean land (NaN = sea)."""
 

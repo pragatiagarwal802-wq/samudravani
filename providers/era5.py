@@ -15,6 +15,7 @@ import numpy as np
 from models.schemas import Observation, ProviderResult, ProviderStatus, RiskQuery
 from providers._util import expand_netcdf, pick_var, to_datetime, to_utc_naive
 from providers.base import DataProvider
+from services.fields import GriddedField
 
 DATASET = "reanalysis-era5-single-levels"
 CDS_VARIABLES = [
@@ -73,6 +74,7 @@ class Era5Provider(DataProvider):
             for d in datasets:
                 d.close()
             obs = self._normalize(ds, query)
+            grids = self._grids(ds, query)
         except Exception as exc:  # network, auth, queue and decode failures
             return ProviderResult(provider=self.name, status=ProviderStatus.ERROR, message=f"ERA5 request failed: {exc}")
 
@@ -81,7 +83,40 @@ class Era5Provider(DataProvider):
                 provider=self.name, status=ProviderStatus.NOT_AVAILABLE,
                 message="ERA5 returned no data inside the requested window.",
             )
-        return ProviderResult(provider=self.name, status=ProviderStatus.OK, observations=obs)
+        return ProviderResult(provider=self.name, status=ProviderStatus.OK, observations=obs, grids=grids)
+
+    def health(self) -> dict:
+        ok = bool(os.environ.get("CDSAPI_URL") and os.environ.get("CDSAPI_KEY"))
+        return {"configured": ok, "detail": "credentials present" if ok else "CDSAPI_URL/CDSAPI_KEY not set"}
+
+    def _grids(self, ds, query: RiskQuery) -> dict:
+        """Worst-case (max over window) wave height and wind speed, mean wind-from direction."""
+        tname = pick_var(ds, ["valid_time", "time"])
+        vlat, vlon = pick_var(ds, ["latitude", "lat"]), pick_var(ds, ["longitude", "lon"])
+        u, v, swh = pick_var(ds, ["u10"]), pick_var(ds, ["v10"]), pick_var(ds, ["swh"])
+        start, end = to_utc_naive(query.window.start), to_utc_naive(query.window.end)
+        idx = [i for i, t in enumerate(np.atleast_1d(ds[tname].values))
+               if (ts := to_datetime(t)) is not None and start <= ts <= end]
+        if not (idx and vlat and vlon):
+            return {}
+        sub = ds.isel({tname: idx})
+        lat, lon = ds[vlat].values, ds[vlon].values
+        grids = {}
+
+        def cube(name):
+            return sub[name].transpose(tname, vlat, vlon).values
+
+        try:
+            if swh:
+                grids["wave_height"] = GriddedField(lat, lon, np.nanmax(cube(swh), axis=0), "wave_height", "m").to_payload()
+            if u and v:
+                cu, cv = cube(u), cube(v)
+                grids["wind_speed"] = GriddedField(lat, lon, np.nanmax(np.hypot(cu, cv), axis=0), "wind_speed", "m/s").to_payload()
+                from_deg = np.rad2deg(np.arctan2(-np.nanmean(cu, axis=0), -np.nanmean(cv, axis=0))) % 360.0
+                grids["wind_from_deg"] = GriddedField(lat, lon, from_deg, "wind_from_deg", "deg").to_payload()
+        except ValueError:  # degenerate grid (fewer than 2 points) or unexpected dims
+            return {}
+        return grids
 
     def _normalize(self, ds, query: RiskQuery) -> List[Observation]:
         tname = pick_var(ds, ["valid_time", "time"])

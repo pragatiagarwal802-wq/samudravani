@@ -15,6 +15,10 @@ class DataProvider(ABC):
 
     name: str
 
+    def health(self) -> dict:
+        """Local configuration check only (no network call): {'configured': bool, 'detail': str}."""
+        return {"configured": True, "detail": ""}
+
     @abstractmethod
     def fetch(self, query: RiskQuery) -> ProviderResult:
         """Return observations for the query, or a non-OK status."""

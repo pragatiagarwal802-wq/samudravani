@@ -8,6 +8,9 @@ from providers.base import DataProvider
 class Era6Provider(DataProvider):
     name = "era6"
 
+    def health(self) -> dict:
+        return {"configured": False, "detail": "ERA6 is not available"}
+
     def fetch(self, query: RiskQuery) -> ProviderResult:
         return ProviderResult(
             provider=self.name,
