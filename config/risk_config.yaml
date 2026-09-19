@@ -1,0 +1,60 @@
+# SamudraVani (PS26176) - marine risk configuration.
+# Thresholds are in SI-ish units: wave height in m, wind in m/s, visibility in km.
+
+version: 1
+
+risk_levels:
+  # Ordered lowest -> highest. A composite score in [0, 1] maps to these bands.
+  - {name: LOW,      min_score: 0.00}
+  - {name: MODERATE, min_score: 0.25}
+  - {name: HIGH,     min_score: 0.50}
+  - {name: SEVERE,   min_score: 0.75}
+
+# Weights must sum to 1.0. Unavailable variables are dropped and weights renormalised.
+weights:
+  wave_height: 0.35
+  wind_speed: 0.30
+  visibility: 0.15
+  sea_surface_temp_anomaly: 0.10
+  current_speed: 0.10
+
+# Per-variable thresholds: value <= low -> score 0.0, value >= high -> score 1.0,
+# linear in between. For "invert: true" variables (e.g. visibility) lower is worse.
+variables:
+  wave_height:
+    unit: m
+    low: 1.0
+    high: 6.0
+    invert: false
+  wind_speed:
+    unit: m/s
+    low: 8.0
+    high: 25.0
+    invert: false
+  visibility:
+    unit: km
+    low: 1.0
+    high: 10.0
+    invert: true
+  sea_surface_temp_anomaly:
+    unit: degC
+    low: 0.5
+    high: 3.0
+    invert: false
+  current_speed:
+    unit: m/s
+    low: 0.5
+    high: 2.5
+    invert: false
+
+# Data providers, in priority order. Disabled/unavailable providers are skipped.
+providers:
+  - name: era6
+    enabled: true
+    # ERA6 is not released; the provider reports NOT_AVAILABLE and never fabricates data.
+    status_expected: NOT_AVAILABLE
+
+# Behaviour when data is missing.
+missing_data:
+  min_variables_required: 2      # below this, result is INSUFFICIENT_DATA
+  fabricate_values: false        # never synthesise readings
