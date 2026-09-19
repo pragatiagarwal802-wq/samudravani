@@ -34,9 +34,29 @@ class TimeWindow(BaseModel):
     end: datetime
 
 
+class BoundingBox(BaseModel):
+    south: float = Field(ge=-90, le=90)
+    west: float = Field(ge=-180, le=180)
+    north: float = Field(ge=-90, le=90)
+    east: float = Field(ge=-180, le=180)
+
+
 class RiskQuery(BaseModel):
     location: Location
     window: TimeWindow
+    bbox: Optional[BoundingBox] = None
+
+    def region(self, half_width: float = 0.5) -> BoundingBox:
+        """Explicit bbox if given, else a box of +/- half_width degrees around the location."""
+        if self.bbox is not None:
+            return self.bbox
+        lat, lon = self.location.lat, self.location.lon
+        return BoundingBox(
+            south=max(-90.0, lat - half_width),
+            north=min(90.0, lat + half_width),
+            west=max(-180.0, lon - half_width),
+            east=min(180.0, lon + half_width),
+        )
 
 
 class Observation(BaseModel):
