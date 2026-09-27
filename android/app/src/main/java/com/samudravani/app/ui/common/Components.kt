@@ -145,19 +145,6 @@ fun VerdictPill(verdict: String?, modifier: Modifier = Modifier) {
     Pill(s.verdicts[verdict] ?: s.planStatus[verdict] ?: verdict.orEmpty(), verdictColor(verdict), modifier)
 }
 
-@Composable
-fun DemoBanner(show: Boolean) {
-    if (!show) return
-    val s = LocalStrings.current
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color(0xFFFFF4D6))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-    ) { Text(s.demoBanner, fontSize = 12.sp, color = Color(0xFF7A5200)) }
-}
-
 /** Label over a big value, used in stat grids. */
 @Composable
 fun Stat(label: String, value: String, modifier: Modifier = Modifier, sub: String? = null) {

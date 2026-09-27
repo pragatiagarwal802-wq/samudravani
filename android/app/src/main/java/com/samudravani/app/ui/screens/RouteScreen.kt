@@ -30,7 +30,6 @@ import com.samudravani.app.i18n.LocalLang
 import com.samudravani.app.i18n.LocalStrings
 import com.samudravani.app.ui.common.Bullet
 import com.samudravani.app.ui.common.Card
-import com.samudravani.app.ui.common.DemoBanner
 import com.samudravani.app.ui.common.LoadContent
 import com.samudravani.app.ui.common.ScreenScaffold
 import com.samudravani.app.ui.common.SeaMap
@@ -85,7 +84,6 @@ private fun RouteDetails(p: Plan) {
     val s = LocalStrings.current
     val t = p.text(LocalLang.current.code)
     val r = p.route
-    DemoBanner(p.isDemo)
     Card(color = Sv.RouteTile, border = Sv.RouteBorder) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(t?.summary ?: "", fontSize = 14.sp, color = Sv.Navy, modifier = Modifier.weight(1f))
@@ -103,7 +101,7 @@ private fun RouteDetails(p: Plan) {
             p.port, listOfNotNull(p.target), r.waypoints,
             Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(14.dp)),
             altRoutes = p.alternates.filter { it.found }.map { it.waypoints },
-            destination = dest,
+            destination = dest, best = p.target,
         )
         Card {
             Row(Modifier.fillMaxWidth()) {

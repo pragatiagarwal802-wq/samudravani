@@ -20,13 +20,8 @@ android {
     }
 
     buildTypes {
-        debug {
-            // When the API is unreachable, show clearly-labelled sample values so the UI can be reviewed.
-            buildConfigField("boolean", "DEMO_FALLBACK", "true")
-        }
         release {
             isMinifyEnabled = false
-            buildConfigField("boolean", "DEMO_FALLBACK", "false")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

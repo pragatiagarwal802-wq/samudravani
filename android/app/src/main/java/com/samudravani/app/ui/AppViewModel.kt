@@ -3,9 +3,7 @@ package com.samudravani.app.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.samudravani.app.BuildConfig
 import com.samudravani.app.data.ChatMsg
-import com.samudravani.app.data.Demo
 import com.samudravani.app.data.Forecast
 import com.samudravani.app.data.LatLon
 import com.samudravani.app.data.Load
@@ -23,13 +21,12 @@ import kotlinx.coroutines.launch
 
 /**
  * App state: selected port and language, the fishing plan from that port, the 5-day forecast,
- * and an optional port-to-port route. Debug builds fall back to labelled demo data when the
- * server is unreachable; release builds report the failure instead.
+ * and an optional port-to-port route. Everything shown comes from the server; when it cannot be
+ * reached the screens say so (with a retry) rather than showing substitute values.
  */
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val settings = Settings(app)
     private val api = SamudraApi { settings.serverCandidates() }
-    private val demoFallback = BuildConfig.DEMO_FALLBACK
 
     private val _port = MutableStateFlow(PORTS.firstOrNull { it.name == settings.portName } ?: PORTS.first())
     val port: StateFlow<Port> = _port.asStateFlow()
@@ -89,8 +86,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _plan.value = Load.Loading
         _forecast.value = Load.Loading
         jobs = listOf(
-            viewModelScope.launch { _plan.value = load({ api.plan(port) }) { Demo.plan(port) } },
-            viewModelScope.launch { _forecast.value = load({ api.forecast(port) }) { Demo.forecast(port) } },
+            viewModelScope.launch { _plan.value = load { api.plan(port) } },
+            viewModelScope.launch { _forecast.value = load { api.forecast(port) } },
         )
         _routeTo.value?.let { routeToPort(it) }
     }
@@ -105,10 +102,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val port = _port.value
         val goal = LatLon(dest.lat, dest.lon)
         _portRoute.value = Load.Loading
-        routeJob = viewModelScope.launch { _portRoute.value = load({ api.plan(port, goal) }) { Demo.plan(port, goal) } }
+        routeJob = viewModelScope.launch { _portRoute.value = load { api.plan(port, goal) } }
     }
 
-    /** Ask a question; the answer replaces a pending placeholder. Never answered with demo data. */
+    /** Ask a question; the answer replaces a pending placeholder. */
     fun ask(question: String) {
         val q = question.trim()
         if (q.isEmpty()) return
@@ -129,11 +126,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun <T> load(call: suspend () -> T, demo: () -> T): Load<T> = try {
+    private suspend fun <T> load(call: suspend () -> T): Load<T> = try {
         Load.Ready(call())
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
     } catch (e: Exception) {
-        if (demoFallback) Load.Ready(demo()) else Load.Failed(e.message ?: e.javaClass.simpleName)
+        Load.Failed(e.message ?: e.javaClass.simpleName)
     }
 }

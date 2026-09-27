@@ -19,7 +19,6 @@ import com.samudravani.app.i18n.LocalLang
 import com.samudravani.app.i18n.LocalStrings
 import com.samudravani.app.ui.common.Bullet
 import com.samudravani.app.ui.common.Card
-import com.samudravani.app.ui.common.DemoBanner
 import com.samudravani.app.ui.common.LoadContent
 import com.samudravani.app.ui.common.ScreenScaffold
 import com.samudravani.app.ui.common.SectionTitle
@@ -38,7 +37,6 @@ fun AlertsScreen(plan: Load<Plan>, forecast: Load<Forecast>, onBack: (() -> Unit
     ScreenScaffold(s.alertsTitle, onBack, accent = Sv.AlertTile) {
         LoadContent(plan, onRetry) { p ->
             val t = p.text(lang.code)
-            DemoBanner(p.isDemo)
             Card(color = Sv.AlertTile, border = Sv.AlertBorder) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     WarningIcon(Modifier.size(width = 40.dp, height = 36.dp))

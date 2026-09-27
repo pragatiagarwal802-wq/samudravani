@@ -1,13 +1,20 @@
 """ERA5 reanalysis provider (Copernicus CDS) for wind, waves and SST.
 
-Credentials come from CDSAPI_URL and CDSAPI_KEY. Values are spatially averaged
-over the bounding box, one observation per variable per hourly timestamp.
+Credentials: CDSAPI_URL + CDSAPI_KEY, or the ~/.cdsapirc file the CDS website tells you to
+create (the cdsapi client reads it). Values are spatially averaged over the bounding box,
+one observation per variable per hourly timestamp.
+
+ERA5 is a reanalysis: data appear about ERA5_LAG_DAYS (default 5) days after real time. Windows
+that start later than that are answered NOT_AVAILABLE at once instead of sending CDS a request
+that would queue and then fail; windows that straddle the limit are clipped to it. Live plans
+therefore rely on the forecast provider; ERA5 serves past windows (trends, validation).
 """
 from __future__ import annotations
 
 import os
+import pathlib
 import tempfile
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 import numpy as np
@@ -52,14 +59,35 @@ class Era5Provider(DataProvider):
             "download_format": "unarchived",
         }
 
+    @staticmethod
+    def _credentials():
+        """(url, key) from the environment, or (None, None) when ~/.cdsapirc should be used."""
+        return os.environ.get("CDSAPI_URL"), os.environ.get("CDSAPI_KEY")
+
+    @staticmethod
+    def _rc_file() -> pathlib.Path:
+        return pathlib.Path(os.environ.get("CDSAPI_RC", pathlib.Path.home() / ".cdsapirc"))
+
+    def _configured(self) -> bool:
+        url, key = self._credentials()
+        return bool(url and key) or self._rc_file().is_file()
+
     def fetch(self, query: RiskQuery) -> ProviderResult:
-        url, key = os.environ.get("CDSAPI_URL"), os.environ.get("CDSAPI_KEY")
-        if not url or not key:
+        if not self._configured():
             return ProviderResult(
                 provider=self.name,
                 status=ProviderStatus.NOT_AVAILABLE,
-                message="CDSAPI_URL / CDSAPI_KEY are not set.",
+                message="CDSAPI_URL / CDSAPI_KEY (or ~/.cdsapirc) are not set.",
             )
+        latest = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=float(os.environ.get("ERA5_LAG_DAYS", 5)))
+        if to_utc_naive(query.window.start) > latest:
+            return ProviderResult(
+                provider=self.name, status=ProviderStatus.NOT_AVAILABLE,
+                message=f"ERA5 is published about 5 days late; latest available is around {latest:%Y-%m-%d}.",
+            )
+        if to_utc_naive(query.window.end) > latest:
+            query = query.model_copy(update={"window": query.window.model_copy(update={"end": latest})})
+        url, key = self._credentials()
         try:
             import cdsapi
             import xarray as xr
@@ -68,7 +96,8 @@ class Era5Provider(DataProvider):
 
         try:
             target = os.path.join(tempfile.mkdtemp(prefix="era5_"), "era5.nc")
-            cdsapi.Client(url=url, key=key, quiet=True).retrieve(DATASET, self._request(query), target)
+            client = cdsapi.Client(url=url, key=key, quiet=True) if url and key else cdsapi.Client(quiet=True)
+            client.retrieve(DATASET, self._request(query), target)
             datasets = [xr.open_dataset(p) for p in expand_netcdf(target)]
             ds = xr.merge(datasets, compat="override").load()
             for d in datasets:
@@ -86,8 +115,8 @@ class Era5Provider(DataProvider):
         return ProviderResult(provider=self.name, status=ProviderStatus.OK, observations=obs, grids=grids)
 
     def health(self) -> dict:
-        ok = bool(os.environ.get("CDSAPI_URL") and os.environ.get("CDSAPI_KEY"))
-        return {"configured": ok, "detail": "credentials present" if ok else "CDSAPI_URL/CDSAPI_KEY not set"}
+        ok = self._configured()
+        return {"configured": ok, "detail": "credentials present" if ok else "CDSAPI_URL/CDSAPI_KEY or ~/.cdsapirc not set"}
 
     def _grids(self, ds, query: RiskQuery) -> dict:
         """Worst-case (max over window) wave height and wind speed, mean wind-from direction."""

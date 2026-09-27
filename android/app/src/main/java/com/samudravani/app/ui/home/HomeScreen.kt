@@ -67,7 +67,9 @@ import com.samudravani.app.ui.common.Birds
 import com.samudravani.app.ui.common.Chevron
 import com.samudravani.app.ui.common.FishIcon
 import com.samudravani.app.ui.common.FishingBoat
+import com.samudravani.app.ui.common.MapStyle
 import com.samudravani.app.ui.common.MapThumbnail
+import com.samudravani.app.ui.common.SeaMap
 import com.samudravani.app.ui.common.MicIcon
 import com.samudravani.app.ui.common.PinIcon
 import com.samudravani.app.ui.common.RouteIcon
@@ -130,8 +132,8 @@ fun HomeScreen(
 // --- hero -----------------------------------------------------------------------------
 
 // Hero geometry in dp below the status bar, measured from the mockup at 411 dp width.
-private const val HORIZON_DP = 146f
-private const val HERO_DP = 232f
+private const val HORIZON_DP = 100f
+private const val HERO_DP = 176f
 
 @Composable
 private fun Hero(port: Port, lang: Lang, onLangChange: (Lang) -> Unit, onPortChange: (Port) -> Unit) {
@@ -174,13 +176,13 @@ private fun Hero(port: Port, lang: Lang, onLangChange: (Lang) -> Unit, onPortCha
             Birds(
                 Modifier
                     .align(Alignment.TopEnd)
-                    .offset(x = (-24).dp, y = 76.dp)
+                    .offset(x = (-150).dp, y = 58.dp)
                     .size(width = 140.dp, height = 40.dp),
             )
             FishingBoat(
                 Modifier
                     .align(Alignment.TopEnd)
-                    .offset(x = (-42).dp, y = 90.dp)
+                    .offset(x = (-38).dp, y = 44.dp)
                     .size(width = 112.dp, height = 90.dp),
             )
 
@@ -188,23 +190,16 @@ private fun Hero(port: Port, lang: Lang, onLangChange: (Lang) -> Unit, onPortCha
                 painterResource(R.drawable.logo_samudravani),
                 contentDescription = "SamudraVani",
                 modifier = Modifier
-                    .offset(x = 22.dp, y = 20.dp)
+                    .offset(x = 22.dp, y = 14.dp)
                     .size(width = 92.dp, height = 92.dp),
             )
             LanguageToggle(
                 lang, onLangChange,
                 Modifier
                     .align(Alignment.TopEnd)
-                    .offset(x = (-14).dp, y = 26.dp),
+                    .offset(x = (-14).dp, y = 18.dp),
             )
-            Text(
-                s.tagline,
-                style = TextStyle(fontSize = 18.5.sp, lineHeight = 23.sp, fontWeight = FontWeight.Bold, color = Sv.Navy),
-                modifier = Modifier
-                    .offset(x = 20.dp, y = 118.dp)
-                    .width(230.dp),
-            )
-            PortSelector(port, onPortChange, Modifier.offset(x = 16.dp, y = 176.dp))
+            PortSelector(port, onPortChange, Modifier.offset(x = 16.dp, y = 118.dp))
         }
     }
 }
@@ -251,7 +246,11 @@ private fun PortSelector(port: Port, onChange: (Port) -> Unit, modifier: Modifie
         ) {
             PinIcon(Modifier.size(20.dp))
             Spacer(Modifier.width(10.dp))
-            Text(port.label, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Sv.Navy, modifier = Modifier.weight(1f))
+            BasicText(
+                port.label, style = TextStyle(fontWeight = FontWeight.Medium, color = Sv.Navy), maxLines = 1,
+                autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = 15.sp, stepSize = 0.5.sp),
+                modifier = Modifier.weight(1f),
+            )
             Chevron(Modifier.size(20.dp), down = true)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
@@ -321,17 +320,22 @@ private fun Tile(
         ) {
             Box(Modifier.height(42.dp), contentAlignment = Alignment.CenterStart) { icon() }
             Column {
-                Spacer(Modifier.height(10.dp))
                 BasicText(
                     title,
                     style = TextStyle(fontWeight = FontWeight.Bold, color = Sv.Navy),
                     maxLines = 1,
                     autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = 16.sp, stepSize = 0.5.sp),
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(subtitle, fontSize = 12.5.sp, lineHeight = 17.sp, color = subColor, modifier = Modifier.weight(1f),
-                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    BasicText(
+                        subtitle,
+                        style = TextStyle(color = subColor),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        autoSize = TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = 12.5.sp, stepSize = 0.5.sp),
+                        modifier = Modifier.weight(1f),
+                    )
                     Chevron(Modifier.size(18.dp))
                 }
             }
@@ -353,18 +357,28 @@ private fun SummaryCard(state: Load<Plan>, port: Port, modifier: Modifier, onCli
         modifier = modifier.fillMaxWidth(),
     ) {
         Row(Modifier.fillMaxSize().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            MapThumbnail(
-                Modifier
-                    .width(162.dp)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(10.dp)),
-            )
+            val mapBox = Modifier.width(162.dp).fillMaxHeight().clip(RoundedCornerShape(10.dp))
+            val plan = (state as? Load.Ready)?.value
+            if (plan != null && (plan.zones.isNotEmpty() || plan.route?.found == true)) {
+                Box(mapBox) {
+                    SeaMap(
+                        port, plan.zones.take(5), plan.route?.takeIf { it.found }?.waypoints.orEmpty(), Modifier.fillMaxSize(),
+                        best = plan.target, style = MapStyle.SATELLITE, interactive = false,
+                    )
+                    Box(Modifier.matchParentSize().clickable(onClick = onClick)) // the card, not the map, takes the tap
+                }
+            } else {
+                MapThumbnail(mapBox)
+            }
             Box(Modifier.padding(horizontal = 12.dp).width(1.dp).fillMaxHeight(0.8f).background(Sv.CardBorder))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(8.dp).clip(CircleShape).background(Sv.Green))
                     Spacer(Modifier.width(6.dp))
-                    Text(s.fishingChance, fontSize = 12.sp, color = Sv.Green, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    BasicText(
+                        s.fishingChance, style = TextStyle(color = Sv.Green), maxLines = 1,
+                        autoSize = TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = 12.sp, stepSize = 0.5.sp),
+                    )
                 }
                 Spacer(Modifier.height(4.dp))
                 when (state) {
@@ -391,10 +405,10 @@ private fun SummaryValues(d: Plan, port: Port) {
     val hi = d.maxKm
     if (lo != null && hi != null) {
         val range = if (lo == hi) "$lo" else "$lo–$hi"
-        Text(s.fromPort(port.name, range), fontSize = 14.sp, color = Sv.Body)
-    }
-    if (d.isDemo) {
-        Text(s.demo, fontSize = 10.sp, color = Color(0xFF9A6700), modifier = Modifier.padding(top = 2.dp))
+        BasicText(
+            s.fromPort(port.name, range), style = TextStyle(color = Sv.Body), maxLines = 2,
+            autoSize = TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = 14.sp, stepSize = 0.5.sp),
+        )
     }
 }
 

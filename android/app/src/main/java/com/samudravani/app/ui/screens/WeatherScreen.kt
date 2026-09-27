@@ -31,7 +31,6 @@ import com.samudravani.app.i18n.LocalLang
 import com.samudravani.app.i18n.LocalStrings
 import com.samudravani.app.i18n.compassName
 import com.samudravani.app.ui.common.Card
-import com.samudravani.app.ui.common.DemoBanner
 import com.samudravani.app.ui.common.LoadContent
 import com.samudravani.app.ui.common.ScreenScaffold
 import com.samudravani.app.ui.common.SectionTitle
@@ -53,7 +52,6 @@ fun WeatherScreen(forecast: Load<Forecast>, onBack: () -> Unit, onRetry: () -> U
     val s = LocalStrings.current
     ScreenScaffold(s.weatherTitle, onBack, accent = Sv.WeatherTile) {
         LoadContent(forecast, onRetry) { f ->
-            DemoBanner(f.isDemo)
             val now = f.hours.firstOrNull()
             if (now != null) NowCard(now, f.port.label)
             SectionTitle(s.next24h)

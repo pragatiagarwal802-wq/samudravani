@@ -66,11 +66,12 @@ data class Plan(
     val alternates: List<RouteInfo>,
     val text: Map<String, PlanText>, // "hi" / "en" / "gu"
     val dataStatus: Map<String, String>,
-    val isDemo: Boolean = false,
 ) {
     val level: FishingLevel get() = levelFor(zones.maxOfOrNull { it.score })
-    val minKm: Int? get() = zones.minOfOrNull { it.distanceKm }
-    val maxKm: Int? get() = zones.maxOfOrNull { it.distanceKm }
+    /** The best zones (top 3 by score) are what the distance range on the home card describes. */
+    private val topZones: List<Zone> get() = zones.sortedByDescending { it.score }.take(3)
+    val minKm: Int? get() = topZones.minOfOrNull { it.distanceKm }
+    val maxKm: Int? get() = topZones.maxOfOrNull { it.distanceKm }
     fun text(lang: String): PlanText? = text[lang] ?: text["en"]
 }
 
@@ -103,7 +104,6 @@ data class Forecast(
     val hours: List<ForecastHour>,
     val days: List<DayOutlook>,
     val bestDay: LocalDate?,
-    val isDemo: Boolean = false,
 )
 
 /** One line of the ask/chat conversation. [failed] = no answer (server unreachable). */

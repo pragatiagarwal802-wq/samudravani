@@ -1,11 +1,11 @@
 package com.samudravani.app
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.samudravani.app.data.ChatMsg
-import com.samudravani.app.data.Demo
 import com.samudravani.app.data.Load
 import com.samudravani.app.data.PORTS
 import com.samudravani.app.data.SamudraApi
@@ -14,6 +14,7 @@ import com.samudravani.app.ui.AppActions
 import com.samudravani.app.ui.AppState
 import com.samudravani.app.ui.SamudraVaniContent
 import com.samudravani.app.ui.Tab
+import com.samudravani.app.ui.common.LocalLiveMaps
 import com.samudravani.app.ui.home.HomeDestination
 import com.samudravani.app.ui.theme.SamudraVaniTheme
 import org.json.JSONObject
@@ -35,7 +36,7 @@ class HomeScreenshotTest {
     val compose = createComposeRule()
 
     private val port = PORTS.first()
-    private val plan = Demo.plan(port).copy(isDemo = false)
+    private val plan = Demo.plan(port)
     private val forecast by lazy {
         SamudraApi.parseForecast(JSONObject(javaClass.classLoader!!.getResource("forecast.json").readText()), port)
     }
@@ -43,7 +44,10 @@ class HomeScreenshotTest {
     private fun capture(name: String, lang: Lang = Lang.HI, at: HomeDestination? = null, tab: Tab = Tab.HOME,
                         state: AppState = AppState(port, lang, "http://10.0.2.2:8000", Load.Ready(plan), Load.Ready(forecast))) {
         compose.setContent {
-            SamudraVaniTheme { SamudraVaniContent(state.copy(lang = lang), AppActions(), startAt = at, startTab = tab) }
+            // no map tiles in unit tests: maps render as the stylised thumbnail
+            CompositionLocalProvider(LocalLiveMaps provides false) {
+                SamudraVaniTheme { SamudraVaniContent(state.copy(lang = lang), AppActions(), startAt = at, startTab = tab) }
+            }
         }
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
     }

@@ -1,5 +1,16 @@
-package com.samudravani.app.data
+package com.samudravani.app
 
+import com.samudravani.app.data.DayOutlook
+import com.samudravani.app.data.Forecast
+import com.samudravani.app.data.ForecastHour
+import com.samudravani.app.data.LatLon
+import com.samudravani.app.data.Plan
+import com.samudravani.app.data.PlanText
+import com.samudravani.app.data.Port
+import com.samudravani.app.data.RouteInfo
+import com.samudravani.app.data.Rule
+import com.samudravani.app.data.SamudraApi
+import com.samudravani.app.data.Zone
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -9,8 +20,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
- * Sample data shown only by debug builds when the API cannot be reached, so every screen can be
- * reviewed. Screens always label it as demo data; release builds never use it.
+ * Fixed sample plan/forecast for screenshot tests only (test source set; never part of the app).
  */
 object Demo {
     private val IST = ZoneId.of("Asia/Kolkata")
@@ -52,7 +62,7 @@ object Demo {
             caveats = listOf("ડેમો ડેટા: લાઇવ સલાહ માટે SamudraVani સર્વર સાથે જોડો."),
         )
         return Plan(port, destination, "PROCEED", "SAFE", if (destination == null) zones else emptyList(), target, route,
-            emptyList(), mapOf("en" to en, "hi" to hi, "gu" to gu), emptyMap(), isDemo = true)
+            emptyList(), mapOf("en" to en, "hi" to hi, "gu" to gu), emptyMap())
     }
 
     fun forecast(port: Port): Forecast {
@@ -77,6 +87,6 @@ object Demo {
                 mapOf("en" to msg, "hi" to msgHi, "gu" to msg))
         }
         val best = days.filter { it.verdict == "SAFE" }.minByOrNull { it.maxWaveM ?: 9.0 }?.date
-        return Forecast(port, hours, days, best ?: LocalDate.now(IST), isDemo = true)
+        return Forecast(port, hours, days, best ?: LocalDate.now(IST))
     }
 }

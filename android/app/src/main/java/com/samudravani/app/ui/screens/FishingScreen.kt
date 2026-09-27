@@ -27,7 +27,6 @@ import com.samudravani.app.i18n.LocalStrings
 import com.samudravani.app.i18n.compassName
 import com.samudravani.app.ui.common.Bullet
 import com.samudravani.app.ui.common.Card
-import com.samudravani.app.ui.common.DemoBanner
 import com.samudravani.app.ui.common.FishIcon
 import com.samudravani.app.ui.common.LoadContent
 import com.samudravani.app.ui.common.Pill
@@ -42,7 +41,6 @@ fun FishingScreen(plan: Load<Plan>, onBack: () -> Unit, onRetry: () -> Unit, onS
     ScreenScaffold(s.fishingTitle, onBack, accent = Sv.FishTile) {
         LoadContent(plan, onRetry) { p ->
             val text = p.text(LocalLang.current.code)
-            DemoBanner(p.isDemo)
             Card(color = Sv.FishTile, border = Sv.FishBorder) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     FishIcon(Modifier.size(width = 56.dp, height = 36.dp))
@@ -64,8 +62,8 @@ fun FishingScreen(plan: Load<Plan>, onBack: () -> Unit, onRetry: () -> Unit, onS
             if (p.zones.isNotEmpty()) {
                 SeaMap(
                     p.port, p.zones, emptyList(),
-                    Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(14.dp)),
-                    labels = { s.zone(it + 1) },
+                    Modifier.fillMaxWidth().height(240.dp).clip(RoundedCornerShape(14.dp)),
+                    best = p.target, labels = { s.zone(it + 1) },
                 )
                 SectionTitle(s.zonesTitle)
                 p.zones.forEachIndexed { i, z -> ZoneCard(i + 1, z, target = z == p.target, onShow = { onShowZone(z) }) }
