@@ -97,3 +97,28 @@ def test_daily_outlook_flags_rough_day_and_picks_best_day():
     assert "3.0" in rough.messages["hi"][0].message  # numbers preserved
     assert f.best_day == "2026-09-30"
     assert f.hours[0].time == datetime(2026, 9, 27, 3, 0)  # past hours of today dropped
+
+
+# --- background refresh ------------------------------------------------------------------
+
+def test_prefetch_warms_every_port_and_survives_failures():
+    from services.prefetch import warm_once
+
+    calls = []
+
+    def plan(lat, lon, name):
+        calls.append(("plan", name))
+        if name == "B":
+            raise RuntimeError("provider down")
+
+    failed = warm_once([("A", 20.8, 70.2), ("B", 21.4, 69.4), ("C", 21.1, 70.0)], plan,
+                       forecast=lambda lat, lon: calls.append(("forecast", lat)))
+    assert failed == ["B"]
+    assert [c for c in calls if c[0] == "plan"] == [("plan", "A"), ("plan", "B"), ("plan", "C")]
+
+
+def test_prefetch_runs_just_after_each_hour():
+    from services.prefetch import seconds_to_next_run
+
+    assert seconds_to_next_run(datetime(2026, 9, 27, 10, 0, 30)) == 30        # before :01 -> wait till :01
+    assert seconds_to_next_run(datetime(2026, 9, 27, 10, 30, 0)) == 1860      # -> 11:01

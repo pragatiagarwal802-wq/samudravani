@@ -2,6 +2,8 @@
 (satellite winds). For each grid the first provider that has it wins, so forecasts take priority."""
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from agents._common import build_query, grids_to_fields, status_warnings
 from models.state import VoyageState
 from services.data_service import DataService
@@ -10,7 +12,9 @@ from services.data_service import DataService
 def make_weather_agent(data: DataService):
     def weather_agent(state: VoyageState) -> dict:
         query = build_query(state["request"])
-        results = [data.get(name, query) for name in ("openmeteo", "era5", "ascat")]
+        names = ("openmeteo", "era5", "ascat")
+        with ThreadPoolExecutor(max_workers=len(names)) as pool:
+            results = list(pool.map(lambda name: data.get(name, query), names))
         fields = grids_to_fields(results)
         return {
             "weather_results": results,

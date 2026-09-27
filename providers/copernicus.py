@@ -19,11 +19,19 @@ windows usually start now or later. The provider therefore looks back
 COPERNICUS_LOOKBACK_DAYS (default 5) before the window start and uses the most
 recent day with data in the box. The day used is the observation timestamp and
 is named in the result message, so stale data is never silently passed off as current.
+
+Streaming requests fetch a whole region and keep it in memory for COPERNICUS_CACHE_HOURS (default 3),
+so ports share one download and the toolbox's ~20 s catalogue lookup is paid once per region and day.
+The region is COPERNICUS_REGION ("south,west,north,east", default the Gujarat coast 18,66,24,74) when
+it contains the query box, otherwise the box snapped outward to REGION_DEG tiles.
 """
 from __future__ import annotations
 
+import math
 import os
 import pathlib
+import threading
+import time
 from datetime import datetime, timedelta
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -42,6 +50,23 @@ DEFAULT_DATASETS: Dict[str, dict] = {
     "chl": {"dataset": "cmems_obs-oc_glo_bgc-plankton_nrt_l4-gapfree-multi-4km_P1D", "variable": "CHL",
             "unit": "mg/m3", "front": 0.01},
 }
+
+
+REGION_DEG = 2.0
+_REGION_CACHE: Dict[tuple, Tuple[float, object]] = {}
+_REGION_LOCK = threading.Lock()
+_KEY_LOCKS: Dict[tuple, threading.Lock] = {}
+
+
+def _region(box):
+    """(south, west, north, east) to download for the box: the configured coast region if it contains
+    the box, else the box snapped outward to REGION_DEG tiles."""
+    s, w, n, e = (float(x) for x in os.environ.get("COPERNICUS_REGION", "18,66,24,74").split(","))
+    if s <= box.south and w <= box.west and box.north <= n and box.east <= e:
+        return s, w, n, e
+    t = REGION_DEG
+    return (math.floor(box.south / t) * t, math.floor(box.west / t) * t,
+            math.ceil(box.north / t) * t, math.ceil(box.east / t) * t)
 
 
 def _credentials_file() -> pathlib.Path:
@@ -87,17 +112,35 @@ class CopernicusMarineProvider(DataProvider):
             return self._opener(spec, box, start, end)
         if self._local():
             return self._open_local(spec, box, start, end)
+        return self._open_region(spec, box, start, end)
+
+    def _open_region(self, spec: dict, box, start: datetime, end: datetime):
+        """In-memory subset for the tile-snapped region around the box, fetched once per region/day."""
         import copernicusmarine
 
-        user, pwd = self._env_credentials()
-        return copernicusmarine.open_dataset(
-            dataset_id=spec["dataset"], variables=[spec["variable"]],
-            minimum_longitude=box.west, maximum_longitude=box.east,
-            minimum_latitude=box.south, maximum_latitude=box.north,
-            start_datetime=start, end_datetime=end,
-            coordinates_selection_method="inside",  # clips to what exists, e.g. a window ending in the future
-            username=user or None, password=pwd or None,
-        )
+        south, west, north, east = _region(box)
+        key = (spec["dataset"], spec["variable"], south, west, north, east, start.date(), end.date())
+        ttl = float(os.environ.get("COPERNICUS_CACHE_HOURS", 3)) * 3600
+        with _REGION_LOCK:
+            lock = _KEY_LOCKS.setdefault(key, threading.Lock())
+        with lock:
+            hit = _REGION_CACHE.get(key)
+            if hit is None or time.time() - hit[0] > ttl:
+                user, pwd = self._env_credentials()
+                ds = copernicusmarine.open_dataset(
+                    dataset_id=spec["dataset"], variables=[spec["variable"]],
+                    minimum_longitude=west, maximum_longitude=east,
+                    minimum_latitude=south, maximum_latitude=north,
+                    start_datetime=start, end_datetime=end,
+                    coordinates_selection_method="inside",  # clips to what exists, e.g. a window ending in the future
+                    username=user or None, password=pwd or None,
+                ).load()
+                with _REGION_LOCK:
+                    for k in [k for k, (t0, _) in _REGION_CACHE.items() if time.time() - t0 > ttl]:
+                        del _REGION_CACHE[k]
+                    _REGION_CACHE[key] = (time.time(), ds)
+                hit = _REGION_CACHE[key]
+        return hit[1].copy()  # _normalize clips to the exact box
 
     def _open_local(self, spec: dict, box, start: datetime, end: datetime):
         """All files holding the variable, loaded and joined along time (one file per day is fine)."""

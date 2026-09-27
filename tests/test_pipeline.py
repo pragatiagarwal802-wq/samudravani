@@ -211,6 +211,7 @@ def test_api_refuses_cleanly_without_credentials(tmp_path, monkeypatch):
     monkeypatch.setenv("SAMUDRAVANI_CACHE_DB", str(tmp_path / "api.sqlite"))
     monkeypatch.setenv("COPERNICUSMARINE_CREDENTIALS_DIRECTORY", str(tmp_path))  # hide any `copernicusmarine login` file
     monkeypatch.setenv("OPENMETEO_ENABLED", "0")  # offline: no forecast calls
+    monkeypatch.setenv("PREFETCH", "0")
     monkeypatch.setenv("CDSAPI_RC", str(tmp_path / "no-cdsapirc"))  # hide any ~/.cdsapirc
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     import main

@@ -79,10 +79,11 @@ class FakeMosdac:
 
 
 @pytest.fixture
-def creds(monkeypatch):
+def creds(monkeypatch, tmp_path):
     monkeypatch.setenv("MOSDAC_USERNAME", "fisher")
     monkeypatch.setenv("MOSDAC_PASSWORD", "secret")
     monkeypatch.delenv("MOSDAC_CHL_DATASET", raising=False)
+    monkeypatch.setenv("MOSDAC_CACHE_DIR", str(tmp_path / "scenes"))
 
 
 def test_mosdac_downloads_regrids_and_composites_scenes(creds):
@@ -100,6 +101,17 @@ def test_mosdac_downloads_regrids_and_composites_scenes(creds):
     kinds = [(m, u.rsplit("/", 1)[-1]) for m, u, *_ in http.calls]
     assert kinds[0] == ("GET", "datasets.json") and kinds[1] == ("POST", "gettoken") and kinds[-1] == ("POST", "logout")
     assert [c[2]["id"] for c in http.calls if c[1].endswith("/download")] == ["2", "1"]
+
+
+def test_mosdac_scenes_are_downloaded_once_for_all_ports(creds):
+    http = FakeMosdac()
+    MosdacProvider(session=http).fetch(QUERY)
+    other_port = QUERY.model_copy(update={"bbox": BoundingBox(south=20.1, west=70.3, north=21.1, east=71.4)})
+    res = MosdacProvider(session=http).fetch(other_port)
+    assert res.status is ProviderStatus.OK
+    downloads = [c for c in http.calls if c[1].endswith("/download")]
+    assert len(downloads) == 2  # the second port reused both cached scenes
+    assert [c[1].rsplit("/", 1)[-1] for c in http.calls].count("gettoken") == 1  # no login needed the second time
     search = http.calls[0][2]
     assert search["datasetId"] == "3SIMG_L2B_SST" and search["boundingBox"] == "69.7,20.3,70.8,21.3"
 
@@ -132,3 +144,19 @@ def test_era5_reads_cdsapirc(monkeypatch, tmp_path):
     assert Era5Provider().health()["configured"] is False
     rc.write_text("url: https://cds.climate.copernicus.eu/api\nkey: abc\n")
     assert Era5Provider().health()["configured"] is True
+
+
+def test_mosdac_retries_a_download_that_breaks_midway(creds):
+    import requests
+
+    class Flaky(FakeMosdac):
+        broke = False
+
+        def get(self, url, params=None, headers=None, timeout=None, stream=False):
+            if url.endswith("/download") and not Flaky.broke:
+                Flaky.broke = True
+                raise requests.exceptions.ChunkedEncodingError("Connection broken: IncompleteRead")
+            return super().get(url, params, headers, timeout, stream)
+
+    res = MosdacProvider(session=Flaky()).fetch(QUERY)
+    assert res.status is ProviderStatus.OK, res.message

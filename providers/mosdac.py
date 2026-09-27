@@ -12,17 +12,22 @@ Credentials: MOSDAC_USERNAME / MOSDAC_PASSWORD (a MOSDAC SSO account). Datasets:
   MOSDAC_SST_DATASET  default 3SIMG_L2B_SST (INSAT-3S imager, half-hourly, full disk, cloud-free sea only)
   MOSDAC_CHL_DATASET  optional (no default): an ocean-colour chlorophyll product ID from the MOSDAC catalogue
 
+Scenes are full-disk, so one download serves every port: files are kept in MOSDAC_CACHE_DIR
+(default <temp>/samudravani_mosdac) for MOSDAC_CACHE_HOURS (default 6) and reused by all requests.
+
 Each scene is HDF5 with the field and Latitude/Longitude (1-D or 2-D). INSAT-3DS L2B SST files hold
 SST_VAR (1D-Var retrieval, used), SST_REG (regression retrieval, fallback) and SST_FCT (the model
 first guess, never used: it is not a satellite measurement), all in kelvin, on 2-D scaled int16
 Latitude/Longitude. The newest scenes (up to
-MOSDAC_MAX_SCENES, default 3) are clipped to the box, averaged onto a regular 0.05 deg grid (cells
+MOSDAC_MAX_SCENES, default 2) are clipped to the box, averaged onto a regular 0.05 deg grid (cells
 without cloud-free data stay empty) and composited, which fills gaps one scene leaves.
 """
 from __future__ import annotations
 
 import os
 import tempfile
+import threading
+import time
 import warnings
 from datetime import timedelta
 from typing import Dict, List, Optional, Tuple
@@ -30,11 +35,13 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from models.schemas import GridPayload, Observation, ProviderResult, ProviderStatus, RiskQuery
-from providers._util import to_utc_naive, wrap_lon
+from providers._util import prefer_ipv4, to_utc_naive, wrap_lon
 from providers.base import DataProvider
 from services.fields import GriddedField
 
 SEARCH_URL = "https://mosdac.gov.in/apios/datasets.json"
+_DOWNLOAD_LOCKS: Dict[str, threading.Lock] = {}
+_LOCKS_GUARD = threading.Lock()
 API_BASE = "https://mosdac.gov.in/download_api"
 GRID_DEG = 0.05
 
@@ -56,9 +63,12 @@ class MosdacProvider(DataProvider):
                  max_scenes: Optional[int] = None, lookback_days: int = 1, session=None):
         self.half_width = half_width
         self.datasets = datasets or default_datasets()
-        self.max_scenes = int(max_scenes or os.environ.get("MOSDAC_MAX_SCENES", 3))
+        self.max_scenes = int(max_scenes or os.environ.get("MOSDAC_MAX_SCENES", 2))
+        self.cache_dir = os.environ.get("MOSDAC_CACHE_DIR") or os.path.join(tempfile.gettempdir(), "samudravani_mosdac")
+        self.cache_hours = float(os.environ.get("MOSDAC_CACHE_HOURS", 6))
         self.lookback_days = lookback_days
         self._session = session  # test hook
+        prefer_ipv4()
 
     @staticmethod
     def _creds() -> Tuple[Optional[str], Optional[str]]:
@@ -86,16 +96,49 @@ class MosdacProvider(DataProvider):
             raise PermissionError(f"MOSDAC login failed: {js.get('error') or js.get('message') or r.status_code}")
         return js["access_token"]
 
-    def download(self, http, token: str, entry: dict, folder: str) -> str:
-        r = http.get(f"{API_BASE}/download", params={"id": entry["id"]},
-                     headers={"Authorization": f"Bearer {token}"}, timeout=300, stream=True)
-        if r.status_code != 200:
-            raise RuntimeError(f"download {entry.get('identifier')}: HTTP {r.status_code}")
+    def download(self, http, token: str, entry: dict, folder: str, attempts: int = 3) -> str:
+        """Stream one scene to `folder`; retried when the connection drops mid-file (seen on MOSDAC)."""
+        import requests
+
         path = os.path.join(folder, os.path.basename(entry.get("identifier") or f"{entry['id']}.h5"))
-        with open(path, "wb") as fh:
-            for chunk in r.iter_content(1 << 20):
-                fh.write(chunk)
+        for attempt in range(1, attempts + 1):
+            try:
+                r = http.get(f"{API_BASE}/download", params={"id": entry["id"]},
+                             headers={"Authorization": f"Bearer {token}"}, timeout=300, stream=True)
+                if r.status_code != 200:
+                    raise RuntimeError(f"download {entry.get('identifier')}: HTTP {r.status_code}")
+                with open(path, "wb") as fh:
+                    for chunk in r.iter_content(1 << 20):
+                        fh.write(chunk)
+                return path
+            except (requests.exceptions.ChunkedEncodingError, requests.exceptions.ConnectionError):
+                if attempt == attempts:
+                    raise
+                time.sleep(2 * attempt)
         return path
+
+    def scene(self, http, get_token, entry: dict) -> str:
+        """Local path of the scene, downloading it once; concurrent requests for it wait for that download."""
+        os.makedirs(self.cache_dir, exist_ok=True)
+        path = os.path.join(self.cache_dir, os.path.basename(entry.get("identifier") or f"{entry['id']}.h5"))
+        with _LOCKS_GUARD:
+            lock = _DOWNLOAD_LOCKS.setdefault(path, threading.Lock())
+        with lock:
+            if not (os.path.isfile(path) and os.path.getsize(path) > 0):
+                with tempfile.TemporaryDirectory(dir=self.cache_dir) as tmp:
+                    os.replace(self.download(http, get_token(), entry, tmp), path)  # never expose a partial file
+        return path
+
+    def prune_cache(self) -> None:
+        cutoff = time.time() - self.cache_hours * 3600
+        if os.path.isdir(self.cache_dir):
+            for n in os.listdir(self.cache_dir):
+                p = os.path.join(self.cache_dir, n)
+                try:
+                    if os.path.isfile(p) and os.path.getmtime(p) < cutoff:
+                        os.remove(p)
+                except OSError:
+                    pass  # in use by another request; removed next time
 
     def logout(self, http) -> None:
         try:
@@ -120,21 +163,28 @@ class MosdacProvider(DataProvider):
         grids: Dict[str, GridPayload] = {}
         problems: List[str] = []
         http = self._session or requests.Session()
-        token = None
+        token: List[str] = []  # logged in lazily: only when a scene is not cached yet
+
+        def get_token() -> str:
+            if not token:
+                token.append(self.token(http))
+            return token[0]
+
+        self.prune_cache()
         try:
             for key, spec in self.datasets.items():
                 entries = self.search(http, spec["dataset"], box, start, end)
                 if not entries:
                     problems.append(f"{key}: no {spec['dataset']} scene for the box/window")
                     continue
-                token = token or self.token(http)
                 fields = []
-                with tempfile.TemporaryDirectory(prefix="mosdac_") as folder:
-                    for e in entries:
-                        try:
-                            fields.append(regrid_scene(self.download(http, token, e, folder), spec["names"], box))
-                        except Exception as exc:
-                            problems.append(f"{e.get('identifier')}: {exc}")
+                for e in entries:
+                    try:
+                        fields.append(regrid_scene(self.scene(http, get_token, e), spec["names"], box))
+                    except PermissionError:
+                        raise
+                    except Exception as exc:
+                        problems.append(f"{e.get('identifier')}: {exc}")
                 gf = composite(fields, key, spec, box)
                 if gf is None:
                     problems.append(f"{key}: scenes had no cloud-free sea pixels in the box")

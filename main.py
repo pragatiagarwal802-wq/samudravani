@@ -5,7 +5,8 @@ COPERNICUSMARINE_SERVICE_USERNAME/COPERNICUSMARINE_SERVICE_PASSWORD or COPERNICU
 (Copernicus Marine SST + Chl-a; optional COPERNICUS_LOOKBACK_DAYS, default 5),
 ASCAT_DATA_DIR or ASCAT_URL_TEMPLATE, OPENMETEO_ENABLED (default 1; forecasts, no key needed),
 LAND_POLYGONS_GEOJSON (coastline for routing; default data/land_west_india.geojson, "" = none),
-SAMUDRAVANI_CACHE_DB (default cache/samudravani.sqlite).
+SAMUDRAVANI_CACHE_DB (default cache/samudravani.sqlite), PREFETCH (default 1: refresh the ports in
+config/risk_config.yaml at startup and hourly).
 """
 from __future__ import annotations
 
@@ -22,6 +23,9 @@ from models.schemas import (
 )
 from services.ask_service import AskService
 from services.data_service import build_default_service
+from providers._util import prefer_ipv4
+from services import prefetch
+from services.config import load_config
 from services.forecast_service import ForecastService
 from services.localization_service import LocalizationService
 from services.risk_service import RiskService
@@ -33,12 +37,16 @@ DEFAULT_LAND = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    prefer_ipv4()  # see providers._util.prefer_ipv4: avoids ~21 s IPv6 timeouts per MOSDAC connection
     app.state.data = build_default_service(db_path=os.environ.get("SAMUDRAVANI_CACHE_DB", "cache/samudravani.sqlite"))
     land_path = os.environ.get("LAND_POLYGONS_GEOJSON", DEFAULT_LAND)
     app.state.land = load_geojson_land_mask(land_path) if land_path else None
     app.state.graph = build_workflow(app.state.data, land=app.state.land)
     app.state.forecast = ForecastService(RiskService(), _localizer)
     app.state.ask = AskService(forecast=lambda lat, lon: app.state.forecast.forecast(lat, lon, 5), plan=_plan_for_ask)
+    if os.environ.get("PREFETCH", "1") != "0":
+        ports = [(p["name"], p["lat"], p["lon"]) for p in load_config().get("ports", [])]
+        prefetch.start(ports, plan=_plan_for_ask, forecast=lambda lat, lon: app.state.forecast.forecast(lat, lon, 5))
     yield
 
 

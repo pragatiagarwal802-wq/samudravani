@@ -12,6 +12,23 @@ import numpy as np
 from models.schemas import BoundingBox
 
 
+def prefer_ipv4() -> None:
+    """Make `requests`/urllib3 connect over IPv4 only (unless SAMUDRAVANI_IPV4_ONLY=0).
+
+    mosdac.gov.in publishes an IPv6 address that is unreachable from many networks; urllib3 tries it
+    first and waits ~21 s per connection before falling back to IPv4 (measured: search 22 s -> 1 s).
+    Every service used here has IPv4, so this only removes that delay. Process-wide and idempotent.
+    """
+    if os.environ.get("SAMUDRAVANI_IPV4_ONLY", "1") == "0":
+        return
+    import socket
+
+    import urllib3.util.connection as conn
+
+    conn.HAS_IPV6 = False
+    conn.allowed_gai_family = lambda: socket.AF_INET
+
+
 def to_utc_naive(dt: datetime) -> datetime:
     """Normalise to naive UTC so comparisons/serialisation are consistent."""
     if dt.tzinfo is not None:

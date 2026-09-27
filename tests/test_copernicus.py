@@ -130,3 +130,40 @@ def test_mosdac_fills_a_field_copernicus_lacks(tmp_path):
     trace = " ".join(final["trace"])
     assert "copernicus=PARTIAL" in trace
     assert "'chl': 'mosdac'" in trace and "'sst': 'copernicus'" in trace
+
+
+def test_neighbouring_ports_share_one_streamed_download(monkeypatch, tmp_path):
+    import copernicusmarine
+
+    import providers.copernicus as cp
+
+    calls = []
+
+    def fake_open_dataset(dataset_id, variables, minimum_longitude, maximum_longitude,
+                          minimum_latitude, maximum_latitude, **kw):
+        calls.append((dataset_id, minimum_latitude, minimum_longitude, maximum_latitude, maximum_longitude))
+        return (SST if variables == ["analysed_sst"] else CHL).copy()
+
+    monkeypatch.setattr(copernicusmarine, "open_dataset", fake_open_dataset)
+    monkeypatch.setattr(cp, "_REGION_CACHE", {})
+    monkeypatch.setenv("COPERNICUSMARINE_SERVICE_USERNAME", "u")
+    monkeypatch.setenv("COPERNICUSMARINE_SERVICE_PASSWORD", "p")
+    monkeypatch.delenv("COPERNICUS_DATA_DIR", raising=False)
+    monkeypatch.delenv("COPERNICUS_REGION", raising=False)
+
+    veraval = RiskQuery(location=VERAVAL, window=WINDOW, bbox=AREA)
+    diu = RiskQuery(location=VERAVAL, window=WINDOW, bbox=AREA.model_copy(update={"west": 69.9, "east": 70.9}))
+    a, b = CopernicusMarineProvider().fetch(veraval), CopernicusMarineProvider().fetch(diu)
+    assert a.status is ProviderStatus.OK and b.status is ProviderStatus.OK
+    assert len(calls) == 2  # one download per dataset, shared by both boxes
+    assert calls[0][1:] == (18.0, 66.0, 24.0, 74.0)  # the configured Gujarat-coast region
+    assert b.grids["sst"].lon[0] >= 69.9 - 1e-9  # each port still gets its own box
+
+
+def test_boxes_outside_the_coast_region_use_tiles(monkeypatch):
+    from models.schemas import BoundingBox
+    from providers.copernicus import _region
+
+    monkeypatch.delenv("COPERNICUS_REGION", raising=False)
+    assert _region(BoundingBox(south=20.1, west=69.2, north=21.9, east=71.1)) == (18.0, 66.0, 24.0, 74.0)
+    assert _region(BoundingBox(south=12.3, west=73.5, north=13.2, east=74.9)) == (12.0, 72.0, 14.0, 76.0)

@@ -107,3 +107,11 @@ fishing:
 missing_data:
   min_variables_required: 2      # below this, result is INSUFFICIENT_DATA
   fabricate_values: false        # never synthesise readings
+
+# Home ports pre-computed in the background (same offshore approach points as the app).
+# The router needs a sea cell to start from, so these sit just off each harbour.
+ports:
+  - {name: Veraval,   lat: 20.80, lon: 70.25}
+  - {name: Porbandar, lat: 21.45, lon: 69.45}
+  - {name: Mangrol,   lat: 21.08, lon: 70.00}
+  - {name: Diu,       lat: 20.64, lon: 70.95}
