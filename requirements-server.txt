@@ -1,0 +1,14 @@
+# API server only (Docker / cloud). The Streamlit dashboard and tests use requirements.txt.
+pydantic>=2.0
+PyYAML>=6.0
+numpy>=1.26
+xarray>=2024.1
+netCDF4>=1.6
+h5netcdf>=1.3
+requests>=2.31
+cdsapi>=0.7.4
+copernicusmarine>=2.0
+langgraph>=0.2
+anthropic>=1.8   # optional: Claude answers for /api/v1/ask when ANTHROPIC_API_KEY is set
+fastapi>=0.110
+uvicorn>=0.29

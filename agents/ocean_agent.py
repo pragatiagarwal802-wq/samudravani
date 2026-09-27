@@ -1,8 +1,9 @@
 """Ocean agent: collects ocean state (SST, Chl-a and front metrics).
 
 Sources, in priority order per field: Copernicus Marine (global daily L4 SST and
-gap-free Chl-a), then MOSDAC. A field missing from Copernicus (e.g. Chl-a fetch
-failed) is filled from MOSDAC when it has one.
+gap-free Chl-a), then MOSDAC, then Open-Meteo's forecast SST (0.5 deg grid, SST only) as a
+coarse last resort so the app still gets front-based zones before satellite
+credentials are set up. A field missing from one source is filled from the next.
 
 Sentinel has no dedicated provider in this codebase yet, so it is reported as
 unavailable rather than silently skipped.
@@ -13,7 +14,7 @@ from agents._common import build_query, grids_to_fields, status_warnings
 from models.state import VoyageState
 from services.data_service import DataService
 
-SOURCES = ["copernicus", "mosdac"]  # grids_to_fields keeps the first provider's grid per name
+SOURCES = ["copernicus", "mosdac", "openmeteo"]  # grids_to_fields keeps the first provider's grid per name
 
 
 def make_ocean_agent(data: DataService):

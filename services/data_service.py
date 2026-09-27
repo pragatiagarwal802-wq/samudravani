@@ -126,5 +126,6 @@ def build_default_service(**kwargs) -> DataService:
     from providers.era5 import Era5Provider
     from providers.era6 import Era6Provider
     from providers.mosdac import MosdacProvider
+    from providers.openmeteo import OpenMeteoProvider
 
-    return DataService([Era5Provider(), AscatProvider(), CopernicusMarineProvider(), MosdacProvider(), Era6Provider()], **kwargs)
+    return DataService([OpenMeteoProvider(), Era5Provider(), AscatProvider(), CopernicusMarineProvider(), MosdacProvider(), Era6Provider()], **kwargs)

@@ -101,6 +101,7 @@ fishing:
   min_score: 0.4
   top_n: 10
   min_separation_km: 20.0
+  max_distance_km: 60.0             # only cells this close to the origin (small-boat day range); null = no limit
 
 # Behaviour when data is missing.
 missing_data:

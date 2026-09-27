@@ -239,3 +239,63 @@ class VoyagePlanResponse(BaseModel):
     localized: Dict[str, LocalizedPlan] = Field(default_factory=dict)
     warnings: List[str] = Field(default_factory=list)
     trace: List[str] = Field(default_factory=list)
+
+
+# --- point forecast (app weather / alerts screens) -----------------------------------
+
+
+class ForecastHour(BaseModel):
+    """One forecast hour (UTC). None = the source has no value."""
+
+    time: datetime
+    wind_speed: Optional[float] = None      # m/s
+    wind_gust: Optional[float] = None       # m/s
+    wind_from_deg: Optional[float] = None
+    wave_height: Optional[float] = None     # m
+    wave_from_deg: Optional[float] = None
+    wave_period: Optional[float] = None     # s
+    rain_mm: Optional[float] = None         # mm in the hour
+    visibility_km: Optional[float] = None
+    current_speed: Optional[float] = None   # m/s
+    sst: Optional[float] = None             # degC
+
+
+class DayOutlook(BaseModel):
+    """A local day classified with the voyage rules on its worst hour per variable."""
+
+    date: str  # YYYY-MM-DD, local time
+    verdict: VoyageRisk
+    triggered: List[TriggeredRule] = Field(default_factory=list)
+    messages: Dict[str, List[LocalizedRule]] = Field(default_factory=dict)  # lang -> triggered, translated
+    max_wave_m: Optional[float] = None
+    max_wind_ms: Optional[float] = None
+    max_gust_ms: Optional[float] = None
+    rain_mm: Optional[float] = None
+    min_visibility_km: Optional[float] = None
+    max_current_ms: Optional[float] = None
+
+
+class ForecastResponse(BaseModel):
+    location: Location
+    generated_at: datetime
+    timezone: str
+    hours: List[ForecastHour] = Field(default_factory=list)
+    days: List[DayOutlook] = Field(default_factory=list)
+    best_day: Optional[str] = None
+    source: str
+
+
+# --- ask (app voice / chat screen) -----------------------------------------------------
+
+
+class AskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+    lang: str = "hi"  # en | hi | gu
+    origin: Location
+
+
+class AskResponse(BaseModel):
+    answer: str
+    lang: str
+    intent: str   # weather, best_day, safety, fishing, route, summary
+    mode: str     # rules | claude

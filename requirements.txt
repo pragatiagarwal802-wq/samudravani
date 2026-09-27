@@ -8,6 +8,7 @@ requests>=2.31
 cdsapi>=0.7.4
 copernicusmarine>=2.0
 langgraph>=0.2
+anthropic>=1.8   # optional: Claude answers for /api/v1/ask when ANTHROPIC_API_KEY is set
 fastapi>=0.110
 uvicorn>=0.29
 streamlit>=1.35

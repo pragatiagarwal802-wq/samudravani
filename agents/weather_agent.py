@@ -1,4 +1,5 @@
-"""Weather agent: wave and wind data from ERA5 (gridded) and ASCAT (satellite winds)."""
+"""Weather agent: wave and wind data from Open-Meteo (forecast grid), ERA5 (reanalysis grid) and ASCAT
+(satellite winds). For each grid the first provider that has it wins, so forecasts take priority."""
 from __future__ import annotations
 
 from agents._common import build_query, grids_to_fields, status_warnings
@@ -9,7 +10,7 @@ from services.data_service import DataService
 def make_weather_agent(data: DataService):
     def weather_agent(state: VoyageState) -> dict:
         query = build_query(state["request"])
-        results = [data.get("era5", query), data.get("ascat", query)]
+        results = [data.get(name, query) for name in ("openmeteo", "era5", "ascat")]
         fields = grids_to_fields(results)
         return {
             "weather_results": results,

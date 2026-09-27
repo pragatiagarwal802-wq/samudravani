@@ -25,3 +25,16 @@ Offline, from downloaded files (set COPERNICUS_DATA_DIR to the folder):
 Both products lag real time by about a day, so the provider uses the latest day with data
 within COPERNICUS_LOOKBACK_DAYS (default 5) before the voyage window. The day used is shown
 in the provider message and the observation timestamps.
+
+## Forecasts, coastline and the app API
+
+* Weather/wave/current forecasts come from Open-Meteo (providers/openmeteo.py): free, no key,
+  non-commercial use only; a subscription is needed for commercial use. OPENMETEO_ENABLED=0 turns it off.
+* Routing uses the bundled coastline data/land_west_india.geojson (Natural Earth 1:10m land, public
+  domain) unless LAND_POLYGONS_GEOJSON points elsewhere.
+* Fishing zones are limited to fishing.max_distance_km (default 60 km) from the port.
+* GET /api/v1/forecast?lat=..&lon=..&days=5 returns hourly conditions and a voyage-rule verdict per
+  day (used by the app's weather and alerts screens).
+
+Run for the Android app (reachable from a phone on the same Wi-Fi):
+  uvicorn main:app --host 0.0.0.0 --port 8000

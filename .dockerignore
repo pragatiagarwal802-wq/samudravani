@@ -1,0 +1,8 @@
+.git
+android/
+frontend/
+tests/
+cache/
+**/__pycache__/
+*.sqlite*
+.venv/

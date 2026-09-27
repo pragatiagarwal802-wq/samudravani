@@ -7,7 +7,9 @@ from services.fishing_service import FishingService
 
 def make_fishing_agent(service: FishingService):
     def fishing_agent(state: VoyageState) -> dict:
-        result = service.score(state.get("sst_field"), state.get("chl_field"))
+        req = state["request"]
+        origin = (req.origin.lat, req.origin.lon) if req.destination is None else None
+        result = service.score(state.get("sst_field"), state.get("chl_field"), origin=origin)
         return {
             "fishing": result,
             "trace": [f"fishing_agent: {len(result.zones)} zones from {result.candidate_cells} candidate cells"],

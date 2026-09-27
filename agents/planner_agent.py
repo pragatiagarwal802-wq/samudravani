@@ -59,9 +59,10 @@ def planner_agent(state: VoyageState) -> dict:
 
     # 3. choose a target
     if not cands:
-        why = ("no destination was given and " + "; ".join(fishing.notes or ["no front-derived fishing zone met the score threshold"])
-               if fishing and req.destination is None else "no routable target")
-        return refuse(why)
+        if fishing and req.destination is None:
+            caveats.extend(fishing.notes)  # e.g. which fields were missing, the range limit
+            return refuse("no destination was given and no front-derived fishing zone met the score threshold")
+        return refuse("no routable target")
     viable = [c for c in cands if c.route.found]
     for c in cands:
         if not c.route.found:

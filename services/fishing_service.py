@@ -11,13 +11,15 @@ Cell score = weighted mean of the available components in [0, 1]:
   chl_preference            1 inside the optimal Chl-a band, log falloff over chl_margin_factor
 Weights are renormalised over components that have data for that cell.
 Selection: front cells with score >= min_score that are 3x3 local maxima, taken
-best-first with a minimum separation. The optimal bands are species-dependent
+best-first with a minimum separation. When an origin is given, cells farther than
+max_distance_km (straight line) are not candidates: a zone the boat cannot reach
+on a day trip is not a recommendation. The optimal bands are species-dependent
 config values, not universal constants.
 """
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -30,7 +32,8 @@ class FishingService:
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self.c = (config or load_config())["fishing"]
 
-    def score(self, sst: Optional[GriddedField], chl: Optional[GriddedField]) -> FishingResult:
+    def score(self, sst: Optional[GriddedField], chl: Optional[GriddedField],
+              origin: Optional[Tuple[float, float]] = None) -> FishingResult:
         notes: List[str] = []
         if sst is None and chl is None:
             return FishingResult(notes=["No SST or Chl-a field supplied; no zones computed."])
@@ -77,6 +80,13 @@ class FishingService:
             total = np.where(den > 0, num / den, np.nan)
 
         cand = front_mask & np.isfinite(total) & (total >= c["min_score"])
+        max_km = c.get("max_distance_km")
+        if origin is not None and max_km:
+            la2, lo2 = np.meshgrid(lat, lon, indexing="ij")
+            dy = (la2 - origin[0]) * KM_PER_DEG
+            dx = (lo2 - origin[1]) * KM_PER_DEG * math.cos(math.radians(origin[0]))
+            cand &= np.hypot(dx, dy) <= max_km
+            notes.append(f"Only cells within {max_km:.0f} km of the origin were considered.")
         result = FishingResult(candidate_cells=int(cand.sum()), notes=notes)
         # local maxima over 3x3 (NaN-safe), best-first with separation
         padded = np.pad(np.where(np.isfinite(total), total, -np.inf), 1, constant_values=-np.inf)

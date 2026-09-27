@@ -210,6 +210,7 @@ def test_api_refuses_cleanly_without_credentials(tmp_path, monkeypatch):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("SAMUDRAVANI_CACHE_DB", str(tmp_path / "api.sqlite"))
     monkeypatch.setenv("COPERNICUSMARINE_CREDENTIALS_DIRECTORY", str(tmp_path))  # hide any `copernicusmarine login` file
+    monkeypatch.setenv("OPENMETEO_ENABLED", "0")  # offline: no forecast calls
     import main
 
     body = {"origin": {"lat": 20.80, "lon": 70.25}, "window": {"start": "2026-09-20T00:00:00", "end": "2026-09-21T00:00:00"}}
